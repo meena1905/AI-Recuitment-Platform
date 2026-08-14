@@ -7,6 +7,15 @@ from models import User
 from auth import hash_password, verify_password, create_access_token, decode_access_token
 
 app = FastAPI()
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # --- Database session dependency ---
 def get_db():
@@ -30,6 +39,14 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
     return user
+
+# --- Role-based access control dependency ---
+def require_role(allowed_roles: list[str]):
+    def role_checker(current_user: User = Depends(get_current_user)):
+        if current_user.role not in allowed_roles:
+            raise HTTPException(status_code=403, detail="Not authorized for this action")
+        return current_user
+    return role_checker
 
 # --- Request body schemas ---
 class RegisterRequest(BaseModel):
@@ -86,3 +103,7 @@ def read_current_user(current_user: User = Depends(get_current_user)):
         "role": current_user.role,
         "company_id": current_user.company_id,
     }
+
+@app.get("/hr-only")
+def hr_only_route(current_user: User = Depends(require_role(["hr", "admin"]))):
+    return {"message": f"Welcome HR user {current_user.name}"}
