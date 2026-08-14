@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from database import SessionLocal
 from models import User
 from auth import hash_password, verify_password, create_access_token, decode_access_token
-
+from models import User, Company , Job
 app = FastAPI()
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -53,11 +53,22 @@ class RegisterRequest(BaseModel):
     name: str
     email: str
     password: str
-    role: str  # "candidate" or "hr"
+    role: str  
+    company_name: str | None = None  
 
 class LoginRequest(BaseModel):
     email: str
     password: str
+class JobCreate(BaseModel):
+    title: str
+    description: str
+    requirements: str
+
+class JobUpdate(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    requirements: str | None = None
+    status: str | None = None
 
 # --- Routes ---
 @app.get("/")
@@ -70,16 +81,31 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already registered")
 
+    company_id = None
+    if payload.role == "hr":
+        if not payload.company_name:
+            raise HTTPException(status_code=400, detail="HR accounts must provide a company_name")
+
+        company = db.query(Company).filter(Company.name == payload.company_name).first()
+        if not company:
+            company = Company(name=payload.company_name)
+            db.add(company)
+            db.commit()
+            db.refresh(company)
+
+        company_id = company.id
+
     new_user = User(
         name=payload.name,
         email=payload.email,
         password_hash=hash_password(payload.password),
         role=payload.role,
+        company_id=company_id,
     )
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
-    return {"id": new_user.id, "name": new_user.name, "email": new_user.email, "role": new_user.role}
+    return {"id": new_user.id, "name": new_user.name, "email": new_user.email, "role": new_user.role, "company_id": new_user.company_id}
 
 @app.post("/auth/login")
 def login(payload: LoginRequest, db: Session = Depends(get_db)):
@@ -107,3 +133,49 @@ def read_current_user(current_user: User = Depends(get_current_user)):
 @app.get("/hr-only")
 def hr_only_route(current_user: User = Depends(require_role(["hr", "admin"]))):
     return {"message": f"Welcome HR user {current_user.name}"}
+@app.post("/jobs")
+def create_job(payload: JobCreate, current_user: User = Depends(require_role(["hr"])), db: Session = Depends(get_db)):
+    new_job = Job(
+        company_id=current_user.company_id,
+        title=payload.title,
+        description=payload.description,
+        requirements=payload.requirements,
+        status="draft",
+    )
+    db.add(new_job)
+    db.commit()
+    db.refresh(new_job)
+    return new_job
+
+@app.get("/jobs/mine")
+def list_my_jobs(current_user: User = Depends(require_role(["hr"])), db: Session = Depends(get_db)):
+    jobs = db.query(Job).filter(Job.company_id == current_user.company_id).all()
+    return jobs
+
+@app.put("/jobs/{job_id}")
+def update_job(job_id: int, payload: JobUpdate, current_user: User = Depends(require_role(["hr"])), db: Session = Depends(get_db)):
+    job = db.query(Job).filter(Job.id == job_id).first()
+
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if job.company_id != current_user.company_id:
+        raise HTTPException(status_code=403, detail="You do not have access to this job")
+
+    if payload.title is not None:
+        job.title = payload.title
+    if payload.description is not None:
+        job.description = payload.description
+    if payload.requirements is not None:
+        job.requirements = payload.requirements
+    if payload.status is not None:
+        job.status = payload.status
+
+    db.commit()
+    db.refresh(job)
+    return job
+
+@app.get("/jobs/public")
+def list_public_jobs(db: Session = Depends(get_db)):
+    jobs = db.query(Job).filter(Job.status == "published").all()
+    return jobs
