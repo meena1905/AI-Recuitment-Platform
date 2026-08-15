@@ -1,11 +1,14 @@
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
+from fastapi import UploadFile, File
+import os
+import uuid
 from pydantic import BaseModel
 from database import SessionLocal
 from models import User
 from auth import hash_password, verify_password, create_access_token, decode_access_token
-from models import User, Company , Job
+from models import User, Company, Job, Application
 app = FastAPI()
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -179,3 +182,70 @@ def update_job(job_id: int, payload: JobUpdate, current_user: User = Depends(req
 def list_public_jobs(db: Session = Depends(get_db)):
     jobs = db.query(Job).filter(Job.status == "published").all()
     return jobs
+UPLOAD_DIR = "uploads"
+
+@app.post("/jobs/{job_id}/apply")
+async def apply_to_job(
+    job_id: int,
+    resume: UploadFile = File(...),
+    current_user: User = Depends(require_role(["candidate"])),
+    db: Session = Depends(get_db),
+):
+    # Check the job actually exists
+    job = db.query(Job).filter(Job.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    # Prevent duplicate applications
+    existing = db.query(Application).filter(
+        Application.job_id == job_id,
+        Application.candidate_id == current_user.id
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="You already applied to this job")
+
+    # Validate file type
+    if not resume.filename.endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are allowed")
+
+    # Read file content and check size (limit: 5MB)
+    contents = await resume.read()
+    if len(contents) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File too large (max 5MB)")
+
+    # Generate a unique filename and save it
+    unique_filename = f"{uuid.uuid4()}.pdf"
+    file_path = os.path.join(UPLOAD_DIR, unique_filename)
+
+    with open(file_path, "wb") as f:
+        f.write(contents)
+
+    # Create the application record
+    new_application = Application(
+        job_id=job_id,
+        candidate_id=current_user.id,
+        resume_url=file_path,
+        status="applied",
+    )
+    db.add(new_application)
+    db.commit()
+    db.refresh(new_application)
+
+    return new_application
+@app.get("/applications/mine")
+def list_my_applications(current_user: User = Depends(require_role(["candidate"])), db: Session = Depends(get_db)):
+    applications = db.query(Application).filter(Application.candidate_id == current_user.id).all()
+    return applications
+
+@app.get("/jobs/{job_id}/applicants")
+def list_applicants(job_id: int, current_user: User = Depends(require_role(["hr"])), db: Session = Depends(get_db)):
+    job = db.query(Job).filter(Job.id == job_id).first()
+
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if job.company_id != current_user.company_id:
+        raise HTTPException(status_code=403, detail="You do not have access to this job")
+
+    applications = db.query(Application).filter(Application.job_id == job_id).all()
+    return applications
