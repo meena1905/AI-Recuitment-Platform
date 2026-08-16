@@ -7,6 +7,7 @@ import uuid
 from pydantic import BaseModel
 from database import SessionLocal
 from models import User
+from resume_parser import extract_text_from_pdf
 from auth import hash_password, verify_password, create_access_token, decode_access_token
 from models import User, Company, Job, Application
 app = FastAPI()
@@ -249,3 +250,15 @@ def list_applicants(job_id: int, current_user: User = Depends(require_role(["hr"
 
     applications = db.query(Application).filter(Application.job_id == job_id).all()
     return applications
+@app.get("/applications/{application_id}/resume-text")
+def get_resume_text(application_id: int, current_user: User = Depends(require_role(["hr"])), db: Session = Depends(get_db)):
+    application = db.query(Application).filter(Application.id == application_id).first()
+    if not application:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    job = db.query(Job).filter(Job.id == application.job_id).first()
+    if job.company_id != current_user.company_id:
+        raise HTTPException(status_code=403, detail="You do not have access to this application")
+
+    text = extract_text_from_pdf(application.resume_url)
+    return {"application_id": application_id, "extracted_text": text}
