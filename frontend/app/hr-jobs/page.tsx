@@ -103,6 +103,8 @@ export default function HRJobsPage() {
           <button onClick={() => togglePublish(job)}>
             {job.status === "published" ? "Unpublish" : "Publish"}
           </button>
+          <br />
+          <a href={`/hr-jobs/${job.id}/applicants`}>View Applicants</a>
         </div>
       ))}
     </div>
