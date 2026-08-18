@@ -7,6 +7,7 @@ import uuid
 from ai_scorer import score_resume_against_job
 from pydantic import BaseModel
 from database import SessionLocal
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, BackgroundTasks
 from models import User
 from resume_parser import extract_text_from_pdf
 from auth import hash_password, verify_password, create_access_token, decode_access_token
@@ -184,19 +185,38 @@ def list_public_jobs(db: Session = Depends(get_db)):
     return jobs
 UPLOAD_DIR = "uploads"
 
+def run_scoring_task(application_id: int):
+    db = SessionLocal()
+    try:
+        application = db.query(Application).filter(Application.id == application_id).first()
+        if not application:
+            return
+
+        job = db.query(Job).filter(Job.id == application.job_id).first()
+        resume_text = extract_text_from_pdf(application.resume_url)
+        result = score_resume_against_job(resume_text, job.description, job.requirements)
+
+        application.match_score = result["match_score"]
+        application.ai_explanation = result["explanation"]
+        db.commit()
+    except Exception as e:
+        print(f"Scoring failed for application {application_id}: {e}")
+    finally:
+        db.close()
+
+
 @app.post("/jobs/{job_id}/apply")
 async def apply_to_job(
     job_id: int,
+    background_tasks: BackgroundTasks,
     resume: UploadFile = File(...),
     current_user: User = Depends(require_role(["candidate"])),
     db: Session = Depends(get_db),
 ):
-    # Check the job actually exists
     job = db.query(Job).filter(Job.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    # Prevent duplicate applications
     existing = db.query(Application).filter(
         Application.job_id == job_id,
         Application.candidate_id == current_user.id
@@ -204,23 +224,19 @@ async def apply_to_job(
     if existing:
         raise HTTPException(status_code=400, detail="You already applied to this job")
 
-    # Validate file type
     if not resume.filename.endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are allowed")
 
-    # Read file content and check size (limit: 5MB)
     contents = await resume.read()
     if len(contents) > 5 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="File too large (max 5MB)")
 
-    # Generate a unique filename and save it
     unique_filename = f"{uuid.uuid4()}.pdf"
     file_path = os.path.join(UPLOAD_DIR, unique_filename)
 
     with open(file_path, "wb") as f:
         f.write(contents)
 
-    # Create the application record
     new_application = Application(
         job_id=job_id,
         candidate_id=current_user.id,
@@ -230,6 +246,8 @@ async def apply_to_job(
     db.add(new_application)
     db.commit()
     db.refresh(new_application)
+
+    background_tasks.add_task(run_scoring_task, new_application.id)
 
     return new_application
 @app.get("/applications/mine")
