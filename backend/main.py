@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from fastapi import UploadFile, File
 import os
 import uuid
+from ai_scorer import score_resume_against_job
 from pydantic import BaseModel
 from database import SessionLocal
 from models import User
@@ -20,8 +21,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# --- Database session dependency ---
 def get_db():
     db = SessionLocal()
     try:
@@ -262,3 +261,22 @@ def get_resume_text(application_id: int, current_user: User = Depends(require_ro
 
     text = extract_text_from_pdf(application.resume_url)
     return {"application_id": application_id, "extracted_text": text}
+@app.post("/applications/{application_id}/score")
+def score_application(application_id: int, current_user: User = Depends(require_role(["hr"])), db: Session = Depends(get_db)):
+    application = db.query(Application).filter(Application.id == application_id).first()
+    if not application:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    job = db.query(Job).filter(Job.id == application.job_id).first()
+    if job.company_id != current_user.company_id:
+        raise HTTPException(status_code=403, detail="You do not have access to this application")
+
+    resume_text = extract_text_from_pdf(application.resume_url)
+    result = score_resume_against_job(resume_text, job.description, job.requirements)
+
+    application.match_score = result["match_score"]
+    application.ai_explanation = result["explanation"]
+    db.commit()
+    db.refresh(application)
+
+    return application
