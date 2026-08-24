@@ -1,57 +1,34 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useParams } from "next/navigation";
 
-export default function HRJobsPage() {
-  const [jobs, setJobs] = useState<any[]>([]);
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [requirements, setRequirements] = useState("");
-  const [message, setMessage] = useState("");
+export default function ApplicantsPage() {
+  const params = useParams();
+  const jobId = params.id;
+  const [applicants, setApplicants] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  function loadJobs() {
+  function loadApplicants() {
     const token = localStorage.getItem("access_token");
-    fetch("http://localhost:8000/jobs/mine", {
+    fetch(`http://localhost:8000/jobs/${jobId}/applicants`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((res) => res.json())
-      .then((data) => setJobs(data));
+      .then((data) => {
+        const sorted = [...data].sort((a, b) => (b.match_score ?? -1) - (a.match_score ?? -1));
+        setApplicants(sorted);
+        setLoading(false);
+      });
   }
 
   useEffect(() => {
-    loadJobs();
-  }, []);
+    loadApplicants();
+  }, [jobId]);
 
-  async function handleCreate(e: React.FormEvent) {
-    e.preventDefault();
+  async function updateStatus(applicationId: number, newStatus: string) {
     const token = localStorage.getItem("access_token");
-
-    const response = await fetch("http://localhost:8000/jobs", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ title, description, requirements }),
-    });
-
-    if (response.ok) {
-      setMessage("Job created as draft.");
-      setTitle("");
-      setDescription("");
-      setRequirements("");
-      loadJobs();
-    } else {
-      const data = await response.json();
-      setMessage(data.detail || "Failed to create job.");
-    }
-  }
-
-  async function togglePublish(job: any) {
-    const token = localStorage.getItem("access_token");
-    const newStatus = job.status === "published" ? "draft" : "published";
-
-    await fetch(`http://localhost:8000/jobs/${job.id}`, {
+    const response = await fetch(`http://localhost:8000/applications/${applicationId}/status`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
@@ -60,51 +37,56 @@ export default function HRJobsPage() {
       body: JSON.stringify({ status: newStatus }),
     });
 
-    loadJobs();
+    if (response.ok) {
+      loadApplicants();
+    } else {
+      const data = await response.json();
+      alert(data.detail || "Failed to update status");
+    }
   }
 
+  const nextActions: Record<string, { label: string; status: string }[]> = {
+    applied: [
+      { label: "Shortlist", status: "shortlisted" },
+      { label: "Reject", status: "rejected" },
+    ],
+    shortlisted: [
+      { label: "Reject", status: "rejected" },
+    ],
+    interview_scheduled: [
+      { label: "Hire", status: "hired" },
+      { label: "Reject", status: "rejected" },
+    ],
+  };
+
+  if (loading) return <p>Loading applicants...</p>;
+
   return (
-    <div style={{ maxWidth: "600px", margin: "50px auto" }}>
-      <h1>My Job Postings</h1>
+    <div style={{ maxWidth: "700px", margin: "50px auto" }}>
+      <h1>Applicants</h1>
+      {applicants.length === 0 && <p>No applicants yet.</p>}
+      {applicants.map((app) => (
+        <div key={app.id} style={{ border: "1px solid #ccc", padding: "15px", marginBottom: "10px" }}>
+          <h3>Candidate #{app.candidate_id}</h3>
+          {app.match_score !== null ? (
+            <>
+              <p><strong>Match Score:</strong> {app.match_score}%</p>
+              <p><strong>AI Analysis:</strong> {app.ai_explanation}</p>
+            </>
+          ) : (
+            <p><em>Scoring in progress...</em></p>
+          )}
+          <p><strong>Status:</strong> {app.status.replace("_", " ")}</p>
 
-      <form onSubmit={handleCreate} style={{ marginBottom: "30px" }}>
-        <h3>Create New Job</h3>
-        <input
-          type="text"
-          placeholder="Title"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          required
-        />
-        <br />
-        <textarea
-          placeholder="Description"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          required
-        />
-        <br />
-        <textarea
-          placeholder="Requirements"
-          value={requirements}
-          onChange={(e) => setRequirements(e.target.value)}
-          required
-        />
-        <br />
-        <button type="submit">Create Job</button>
-        <p>{message}</p>
-      </form>
-
-      <h3>Your Jobs</h3>
-      {jobs.map((job) => (
-        <div key={job.id} style={{ border: "1px solid #ccc", padding: "15px", marginBottom: "10px" }}>
-          <h4>{job.title} — {job.status}</h4>
-          <p>{job.description}</p>
-          <button onClick={() => togglePublish(job)}>
-            {job.status === "published" ? "Unpublish" : "Publish"}
-          </button>
-          <br />
-          <a href={`/hr-jobs/${job.id}/applicants`}>View Applicants</a>
+          {(nextActions[app.status] || []).map((action) => (
+            <button
+              key={action.status}
+              onClick={() => updateStatus(app.id, action.status)}
+              style={{ marginRight: "10px" }}
+            >
+              {action.label}
+            </button>
+          ))}
         </div>
       ))}
     </div>
