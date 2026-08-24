@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from database import SessionLocal
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, BackgroundTasks
 from models import User
+from notifications import send_status_email
 from resume_parser import extract_text_from_pdf
 from auth import hash_password, verify_password, create_access_token, decode_access_token
 from models import User, Company, Job, Application,Interview
@@ -333,8 +334,11 @@ def update_application_status(
     application.status = payload.status
     db.commit()
     db.refresh(application)
-    return application
+    candidate = db.query(User).filter(User.id == application.candidate_id).first()
+    send_status_email(candidate.email, candidate.name, job.title, payload.status)
 
+    return application
+    
 
 @app.post("/applications/{application_id}/interview")
 def schedule_interview(
