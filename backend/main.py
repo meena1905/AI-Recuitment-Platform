@@ -11,7 +11,7 @@ from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Backgroun
 from models import User
 from resume_parser import extract_text_from_pdf
 from auth import hash_password, verify_password, create_access_token, decode_access_token
-from models import User, Company, Job, Application
+from models import User, Company, Job, Application,Interview
 app = FastAPI()
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -73,7 +73,11 @@ class JobUpdate(BaseModel):
     description: str | None = None
     requirements: str | None = None
     status: str | None = None
+class ApplicationStatusUpdate(BaseModel):
+    status: str
 
+class InterviewSchedule(BaseModel):
+    scheduled_at: str
 # --- Routes ---
 @app.get("/")
 def read_root():
@@ -298,3 +302,66 @@ def score_application(application_id: int, current_user: User = Depends(require_
     db.refresh(application)
 
     return application
+VALID_STATUS_TRANSITIONS = {
+    "applied": ["shortlisted", "rejected"],
+    "shortlisted": ["interview_scheduled", "rejected"],
+    "interview_scheduled": ["hired", "rejected"],
+}
+
+@app.put("/applications/{application_id}/status")
+def update_application_status(
+    application_id: int,
+    payload: ApplicationStatusUpdate,
+    current_user: User = Depends(require_role(["hr"])),
+    db: Session = Depends(get_db),
+):
+    application = db.query(Application).filter(Application.id == application_id).first()
+    if not application:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    job = db.query(Job).filter(Job.id == application.job_id).first()
+    if job.company_id != current_user.company_id:
+        raise HTTPException(status_code=403, detail="You do not have access to this application")
+
+    allowed_next = VALID_STATUS_TRANSITIONS.get(application.status, [])
+    if payload.status not in allowed_next:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot move from '{application.status}' to '{payload.status}'"
+        )
+
+    application.status = payload.status
+    db.commit()
+    db.refresh(application)
+    return application
+
+
+@app.post("/applications/{application_id}/interview")
+def schedule_interview(
+    application_id: int,
+    payload: InterviewSchedule,
+    current_user: User = Depends(require_role(["hr"])),
+    db: Session = Depends(get_db),
+):
+    application = db.query(Application).filter(Application.id == application_id).first()
+    if not application:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    job = db.query(Job).filter(Job.id == application.job_id).first()
+    if job.company_id != current_user.company_id:
+        raise HTTPException(status_code=403, detail="You do not have access to this application")
+
+    if application.status != "shortlisted":
+        raise HTTPException(status_code=400, detail="Can only schedule interviews for shortlisted candidates")
+
+    new_interview = Interview(
+        application_id=application_id,
+        scheduled_at=payload.scheduled_at,
+        status="scheduled",
+    )
+    db.add(new_interview)
+
+    application.status = "interview_scheduled"
+    db.commit()
+    db.refresh(new_interview)
+    return new_interview
