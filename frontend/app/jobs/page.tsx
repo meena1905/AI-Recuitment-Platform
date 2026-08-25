@@ -2,11 +2,9 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-
 export default function JobsPage() {
   const [jobs, setJobs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-
   useEffect(() => {
     fetch("http://localhost:8000/jobs/public")
       .then((res) => res.json())
@@ -15,9 +13,7 @@ export default function JobsPage() {
         setLoading(false);
       });
   }, []);
-
   if (loading) return <p>Loading jobs...</p>;
-
   return (
     <div style={{ maxWidth: "600px", margin: "50px auto" }}>
       <h1>Open Jobs</h1>
