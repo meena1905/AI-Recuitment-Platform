@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from fastapi import UploadFile, File
 import os
+from embeddings import calculate_similarity
 import uuid
 from ai_scorer import score_resume_against_job
 from pydantic import BaseModel
@@ -170,9 +171,16 @@ def run_scoring_task(application_id: int):
         application = db.query(Application).filter(Application.id == application_id).first()
         if not application:
             return
+
         job = db.query(Job).filter(Job.id == application.job_id).first()
         resume_text = extract_text_from_pdf(application.resume_url)
+
+        job_text = f"{job.description} {job.requirements}"
+        embedding_similarity = calculate_similarity(resume_text, job_text)
+        print(f"Embedding similarity for application {application_id}: {embedding_similarity}")
+
         result = score_resume_against_job(resume_text, job.description, job.requirements)
+
         application.match_score = result["match_score"]
         application.ai_explanation = result["explanation"]
         db.commit()
