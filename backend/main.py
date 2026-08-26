@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from fastapi import UploadFile, File
 import os
 import uuid
@@ -68,6 +69,8 @@ class ApplicationStatusUpdate(BaseModel):
     status: str
 class InterviewSchedule(BaseModel):
     scheduled_at: str
+class FeedbackUpdate(BaseModel):
+    feedback: str
 @app.get("/")
 def read_root():
     return {"message": "Backend is alive"}
@@ -307,3 +310,65 @@ def schedule_interview(
     db.commit()
     db.refresh(new_interview)
     return new_interview
+@app.put("/interviews/{interview_id}/feedback")
+def update_interview_feedback(
+    interview_id: int,
+    payload: FeedbackUpdate,
+    current_user: User = Depends(require_role(["hr"])),
+    db: Session = Depends(get_db),
+):
+    interview = db.query(Interview).filter(Interview.id == interview_id).first()
+    if not interview:
+        raise HTTPException(status_code=404, detail="Interview not found")
+
+    application = db.query(Application).filter(Application.id == interview.application_id).first()
+    job = db.query(Job).filter(Job.id == application.job_id).first()
+
+    if job.company_id != current_user.company_id:
+        raise HTTPException(status_code=403, detail="You do not have access to this interview")
+
+    interview.feedback = payload.feedback
+    db.commit()
+    db.refresh(interview)
+    return interview
+@app.get("/analytics/summary")
+def get_analytics_summary(current_user: User = Depends(require_role(["hr"])), db: Session = Depends(get_db)):
+    company_id = current_user.company_id
+
+    total_jobs = db.query(func.count(Job.id)).filter(Job.company_id == company_id).scalar()
+
+    total_applications = (
+        db.query(func.count(Application.id))
+        .join(Job, Application.job_id == Job.id)
+        .filter(Job.company_id == company_id)
+        .scalar()
+    )
+
+    hired_count = (
+        db.query(func.count(Application.id))
+        .join(Job, Application.job_id == Job.id)
+        .filter(Job.company_id == company_id, Application.status == "hired")
+        .scalar()
+    )
+
+    rejected_count = (
+        db.query(func.count(Application.id))
+        .join(Job, Application.job_id == Job.id)
+        .filter(Job.company_id == company_id, Application.status == "rejected")
+        .scalar()
+    )
+
+    avg_score = (
+        db.query(func.avg(Application.match_score))
+        .join(Job, Application.job_id == Job.id)
+        .filter(Job.company_id == company_id, Application.match_score.isnot(None))
+        .scalar()
+    )
+
+    return {
+        "total_jobs": total_jobs or 0,
+        "total_applications": total_applications or 0,
+        "hired_count": hired_count or 0,
+        "rejected_count": rejected_count or 0,
+        "average_match_score": round(avg_score, 1) if avg_score is not None else None,
+    }
