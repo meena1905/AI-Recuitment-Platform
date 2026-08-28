@@ -1,14 +1,11 @@
 "use client";
-
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
-
 export default function ApplicantsPage() {
   const params = useParams();
   const jobId = params.id;
   const [applicants, setApplicants] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-
   function loadApplicants() {
     const token = localStorage.getItem("access_token");
     fetch(`http://localhost:8000/jobs/${jobId}/applicants`, {
@@ -21,7 +18,6 @@ export default function ApplicantsPage() {
         setLoading(false);
       });
   }
-
   useEffect(() => {
     loadApplicants();
   }, [jobId]);
