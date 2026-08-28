@@ -17,9 +17,11 @@ from auth import hash_password, verify_password, create_access_token, decode_acc
 from models import User, Company, Job, Application,Interview
 import redis
 import json as json_lib
+from prometheus_fastapi_instrumentator import Instrumentator
 
 redis_client = redis.Redis(host="redis", port=6379, decode_responses=True)
 app = FastAPI()
+Instrumentator().instrument(app).expose(app)
 from fastapi.middleware.cors import CORSMiddleware
 app.add_middleware(
     CORSMiddleware,
@@ -169,6 +171,7 @@ def list_public_jobs(db: Session = Depends(get_db)):
     cached = redis_client.get("public_jobs")
     if cached:
         return json_lib.loads(cached)
+    
 
     jobs = db.query(Job).filter(Job.status == "published").all()
     result = [{"id": j.id, "title": j.title, "description": j.description, "requirements": j.requirements, "status": j.status, "company_id": j.company_id, "created_at": j.created_at.isoformat()} for j in jobs]
