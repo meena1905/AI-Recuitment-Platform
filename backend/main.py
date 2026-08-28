@@ -17,6 +17,7 @@ from auth import hash_password, verify_password, create_access_token, decode_acc
 from models import User, Company, Job, Application,Interview
 import redis
 import json as json_lib
+from calendar_integration import create_interview_event
 from prometheus_fastapi_instrumentator import Instrumentator
 
 redis_client = redis.Redis(host="redis", port=6379, decode_responses=True)
@@ -330,6 +331,14 @@ def schedule_interview(
     application.status = "interview_scheduled"
     db.commit()
     db.refresh(new_interview)
+
+    candidate = db.query(User).filter(User.id == application.candidate_id).first()
+    try:
+        calendar_link = create_interview_event(candidate.email, job.title, payload.scheduled_at)
+        print(f"Calendar event created: {calendar_link}")
+    except Exception as e:
+        print(f"Calendar event creation failed: {e}")
+
     return new_interview
 @app.put("/interviews/{interview_id}/feedback")
 def update_interview_feedback(

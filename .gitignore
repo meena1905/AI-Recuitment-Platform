@@ -6,3 +6,5 @@ frontend/.next/
 __pycache__/
 *.pyc
 backend/uploads/
+backend/google_credentials.json
+backend/token.json
