@@ -15,6 +15,10 @@ from notifications import send_status_email
 from resume_parser import extract_text_from_pdf
 from auth import hash_password, verify_password, create_access_token, decode_access_token
 from models import User, Company, Job, Application,Interview
+import redis
+import json as json_lib
+
+redis_client = redis.Redis(host="redis", port=6379, decode_responses=True)
 app = FastAPI()
 from fastapi.middleware.cors import CORSMiddleware
 app.add_middleware(
@@ -162,9 +166,15 @@ def update_job(job_id: int, payload: JobUpdate, current_user: User = Depends(req
     return job
 @app.get("/jobs/public")
 def list_public_jobs(db: Session = Depends(get_db)):
+    cached = redis_client.get("public_jobs")
+    if cached:
+        return json_lib.loads(cached)
+
     jobs = db.query(Job).filter(Job.status == "published").all()
-    return jobs
-UPLOAD_DIR = "uploads"
+    result = [{"id": j.id, "title": j.title, "description": j.description, "requirements": j.requirements, "status": j.status, "company_id": j.company_id, "created_at": j.created_at.isoformat()} for j in jobs]
+
+    redis_client.setex("public_jobs", 60, json_lib.dumps(result))
+    return result
 def run_scoring_task(application_id: int):
     db = SessionLocal()
     try:
