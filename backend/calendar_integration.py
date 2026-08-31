@@ -16,6 +16,11 @@ def create_interview_event(candidate_email: str, job_title: str, scheduled_at: s
         "start": {"dateTime": scheduled_at, "timeZone": "Asia/Kolkata"},
         "end": {"dateTime": scheduled_at, "timeZone": "Asia/Kolkata"},
         "attendees": [{"email": candidate_email}],
+        "conferenceData": {
+            "createRequest": {"requestId": f"meet-{scheduled_at}"}
+        },
     }
-    created_event = service.events().insert(calendarId="primary", body=event, sendUpdates="all").execute()
-    return created_event.get("htmlLink")
+    created_event = service.events().insert(
+        calendarId="primary", body=event, sendUpdates="all", conferenceDataVersion=1
+    ).execute()
+    return created_event.get("hangoutLink", created_event.get("htmlLink"))
