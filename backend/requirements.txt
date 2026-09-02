@@ -9,7 +9,8 @@ python-multipart
 pdfplumber
 groq
 sendgrid
-
+passlib[bcrypt]
+bcrypt==4.0.1
 redis
 prometheus-fastapi-instrumentator
 google-auth-oauthlib
