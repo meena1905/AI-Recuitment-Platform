@@ -9,7 +9,7 @@ python-multipart
 pdfplumber
 groq
 sendgrid
-sentence-transformers
+
 redis
 prometheus-fastapi-instrumentator
 google-auth-oauthlib

@@ -4,7 +4,11 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from fastapi import UploadFile, File
 import os
-from embeddings import calculate_similarity
+try:
+    from embeddings import calculate_similarity
+    EMBEDDINGS_AVAILABLE = True
+except Exception:
+    EMBEDDINGS_AVAILABLE = False
 import uuid
 from ai_scorer import score_resume_against_job
 from pydantic import BaseModel
@@ -189,9 +193,10 @@ def run_scoring_task(application_id: int):
         job = db.query(Job).filter(Job.id == application.job_id).first()
         resume_text = extract_text_from_pdf(application.resume_url)
 
-        job_text = f"{job.description} {job.requirements}"
-        embedding_similarity = calculate_similarity(resume_text, job_text)
-        print(f"Embedding similarity for application {application_id}: {embedding_similarity}")
+        if EMBEDDINGS_AVAILABLE:
+           job_text = f"{job.description} {job.requirements}"
+           embedding_similarity = calculate_similarity(resume_text, job_text)
+           print(f"Embedding similarity for application {application_id}: {embedding_similarity}")
 
         result = score_resume_against_job(resume_text, job.description, job.requirements)
 
