@@ -32,9 +32,9 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
-        "https://ai-recuitment-platform.vercel.app",  # Your production Vercel URL
+        "https://ai-recuitment-platform-1.vercel.app",
     ],
-    allow_origin_regex=r"https://ai-recuitment-platform-.*-meena20\.vercel\.app", # Optional: for Vercel preview URLs
+    allow_origin_regex=r"https://ai-recuitment-platform-1-.*-meena20\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
