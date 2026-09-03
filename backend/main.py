@@ -24,7 +24,7 @@ import json as json_lib
 from calendar_integration import create_interview_event
 from prometheus_fastapi_instrumentator import Instrumentator
 
-redis_client = redis.Redis(host="redis", port=6379, decode_responses=True)
+redis_client = redis.from_url(os.environ.get("REDIS_URL", "redis://redis:6379"), decode_responses=True)
 app = FastAPI()
 Instrumentator().instrument(app).expose(app)
 from fastapi.middleware.cors import CORSMiddleware
