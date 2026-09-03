@@ -31,7 +31,8 @@ from fastapi.middleware.cors import CORSMiddleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000",
-                   "ai-recuitment-platform-3dspk24ti-meena20.vercel.app",
+        "https://ai-recuitment-platform.vercel.app",  # Production domain
+        "https://ai-recuitment-platform-git-main-meena20.vercel.app",  # Main branch domain
                    ],
     allow_credentials=True,
     allow_methods=["*"],
