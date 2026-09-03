@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { API_URL } from "@/lib/api";
+
 
 export default function MyApplicationsPage() {
   const [applications, setApplications] = useState<any[]>([]);
@@ -8,7 +10,7 @@ export default function MyApplicationsPage() {
 
   useEffect(() => {
     const token = localStorage.getItem("access_token");
-    fetch("http://localhost:8000/applications/mine", {
+    fetch(`${API_URL}/applications/mine`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((res) => res.json())

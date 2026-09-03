@@ -1,5 +1,5 @@
 "use client";
-
+import { API_URL } from "@/lib/api";
 import { useState, useEffect } from "react";
 
 export default function HRJobsPage() {
@@ -13,7 +13,7 @@ export default function HRJobsPage() {
   function loadJobs() {
     const token = localStorage.getItem("access_token");
 
-    fetch("http://localhost:8000/jobs/mine", {
+    fetch(`${API_URL}/jobs/mine`, {
       headers: {
         Authorization: `Bearer ${token}`,
       },

@@ -1,5 +1,5 @@
 "use client";
-
+import { API_URL } from "@/lib/api";
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 
@@ -11,7 +11,7 @@ export default function ApplicantsPage() {
 
   function loadApplicants() {
     const token = localStorage.getItem("access_token");
-    fetch(`http://localhost:8000/jobs/${jobId}/applicants`, {
+    fetch(`${API_URL}/jobs/${jobId}/applicants`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((res) => res.json())

@@ -1,5 +1,5 @@
 "use client";
-
+import { API_URL } from "@/lib/api";
 import { useState, useEffect } from "react";
 import Link from "next/link";
 
@@ -8,7 +8,7 @@ export default function JobsPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("http://localhost:8000/jobs/public")
+    fetch(`${API_URL}/jobs/public`)
       .then((res) => res.json())
       .then((data) => {
         setJobs(Array.isArray(data) ? data : []);

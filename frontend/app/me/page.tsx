@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-
+import { API_URL } from "@/lib/api";
 export default function MePage() {
   const [user, setUser] = useState<any>(null);
   const [error, setError] = useState("");
@@ -12,7 +12,7 @@ export default function MePage() {
       setError("Not logged in.");
       return;
     }
-    fetch("http://localhost:8000/me", {
+    fetch(`${API_URL}/me`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((res) => {

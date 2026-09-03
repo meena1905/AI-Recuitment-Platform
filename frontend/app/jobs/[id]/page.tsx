@@ -1,5 +1,5 @@
 "use client";
-
+import { API_URL } from "@/lib/api";
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 
@@ -12,7 +12,7 @@ export default function JobDetailPage() {
   const [file, setFile] = useState<File | null>(null);
 
   useEffect(() => {
-    fetch("http://localhost:8000/jobs/public")
+    fetch(`${API_URL}/jobs/public`)
       .then((res) => res.json())
       .then((data) => {
         const list = Array.isArray(data) ? data : [];

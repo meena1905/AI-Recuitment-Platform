@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-
+import { API_URL } from "@/lib/api";
 export default function RegisterPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -15,7 +15,7 @@ export default function RegisterPage() {
     const body: any = { name, email, password, role };
     if (role === "hr") body.company_name = companyName;
 
-    const response = await fetch("http://localhost:8000/auth/register", {
+    const response = await fetch(`${API_URL}/auth/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
