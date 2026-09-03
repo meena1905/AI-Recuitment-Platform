@@ -1,26 +1,51 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --ink: #12203d;
+  --ink-soft: #5b6b85;
+  --accent: #2451b8;
+  --accent-dark: #1b3b8c;
+  --bg: #f6f7fb;
+  --surface: #ffffff;
+  --border: #e2e5ee;
+  --success: #2e7d4f;
+  --success-bg: #e7f3ec;
+  --danger: #c23b32;
+  --danger-bg: #fbeae8;
+  --warning: #c77f12;
+  --warning-bg: #fdf1dc;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  box-sizing: border-box;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-inter), sans-serif;
+  margin: 0;
+}
+
+.font-display {
+  font-family: var(--font-fraunces), serif;
+}
+
+input,
+textarea,
+select {
+  font-family: var(--font-inter), sans-serif;
+  outline: none;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 3px rgba(36, 81, 184, 0.12);
+}
+
+button {
+  cursor: pointer;
+  font-family: var(--font-inter), sans-serif;
 }
