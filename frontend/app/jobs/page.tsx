@@ -1,11 +1,18 @@
 "use client";
 import { API_URL } from "@/lib/api";
 import { useState, useEffect } from "react";
+import { useSyncExternalStore } from "react";
 import Link from "next/link";
+import UserCard from "@/app/UserCard";
 
 export default function JobsPage() {
-  const [jobs, setJobs] = useState<any[]>([]);
+  const [jobs, setJobs] = useState<{ id: number; title: string; description: string }[]>([]);
   const [loading, setLoading] = useState(true);
+  const loggedIn = useSyncExternalStore(
+    () => () => undefined,
+    () => Boolean(localStorage.getItem("access_token")),
+    () => false,
+  );
 
   useEffect(() => {
     fetch(`${API_URL}/jobs/public`)
@@ -44,7 +51,9 @@ export default function JobsPage() {
           Talenta
         </p>
 
-        <div style={{ display: "flex", gap: "12px" }}>
+        <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+          <UserCard />
+          {!loggedIn && <>
           <a
             href="/login"
             style={{
@@ -71,6 +80,7 @@ export default function JobsPage() {
           >
             Get started
           </a>
+          </>}
         </div>
       </header>
 

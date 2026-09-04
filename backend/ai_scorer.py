@@ -4,6 +4,7 @@ import os
 import json
 load_dotenv()
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+
 def score_resume_against_job(resume_text: str, job_description: str, job_requirements: str) -> dict:
     prompt = f"""You are a recruitment screening assistant. Compare the candidate's resume against the job description and requirements below.
 JOB DESCRIPTION:
@@ -15,6 +16,8 @@ CANDIDATE RESUME:
 Respond with ONLY valid JSON, no other text, no markdown code blocks, in exactly this format:
 {{
   "match_score": <integer 0-100>,
+    "score_breakdown": {{"skills": <integer 0-100>, "experience": <integer 0-100>, "education": <integer 0-100>}},
+    "candidate": {{"name": "", "email": "", "phone": "", "skills": [], "experience": "", "education": ""}},
   "matched_skills": [<list of skills from requirements that the candidate has>],
   "missing_skills": [<list of skills from requirements that the candidate lacks>],
   "explanation": "<2-3 sentence explanation of the match>"

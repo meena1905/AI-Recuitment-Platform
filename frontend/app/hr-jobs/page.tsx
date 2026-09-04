@@ -1,6 +1,7 @@
 "use client";
 import { API_URL } from "@/lib/api";
 import { useState, useEffect } from "react";
+import UserCard from "@/app/UserCard";
 
 export default function HRJobsPage() {
   const [jobs, setJobs] = useState<any[]>([]);
@@ -9,6 +10,7 @@ export default function HRJobsPage() {
   const [requirements, setRequirements] = useState("");
   const [message, setMessage] = useState("");
   const [showForm, setShowForm] = useState(false);
+  const [descriptionFiles, setDescriptionFiles] = useState<Record<number, File | null>>({});
 
   function loadJobs() {
     const token = localStorage.getItem("access_token");
@@ -91,6 +93,30 @@ export default function HRJobsPage() {
     }
   }
 
+  async function uploadDescriptionFile(jobId: number) {
+    const file = descriptionFiles[jobId];
+    if (!file) {
+      setMessage("Select a PDF or DOCX job description first.");
+      return;
+    }
+    const formData = new FormData();
+    formData.append("file", file);
+    const response = await fetch(`${API_URL}/jobs/${jobId}/description-file`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${localStorage.getItem("access_token")}` },
+      body: formData,
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      setMessage(data.detail || "Job description upload failed.");
+      return;
+    }
+    setMessage("Job description imported successfully.");
+    setDescriptionFiles((files) => ({ ...files, [jobId]: null }));
+    loadJobs();
+  }
+
+
   const statusStyle = (status: string) =>
     status === "published"
       ? {
@@ -164,6 +190,9 @@ export default function HRJobsPage() {
           maxWidth: "820px",
         }}
       >
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "18px" }}>
+          <UserCard />
+        </div>
         {/* Header */}
         <div
           style={{
@@ -365,10 +394,28 @@ export default function HRJobsPage() {
                     fontSize: "13px",
                     color: "var(--ink-soft)",
                     margin: 0,
+                    lineHeight: 1.5,
+                    maxWidth: "520px",
+                    display: "-webkit-box",
+                    WebkitBoxOrient: "vertical",
+                    WebkitLineClamp: 4,
+                    overflow: "hidden",
+                    whiteSpace: "pre-line",
                   }}
                 >
                   {job.description}
                 </p>
+                <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px", marginTop: "10px" }}>
+                  <input
+                    type="file"
+                    accept=".pdf,.docx"
+                    onChange={(event) => setDescriptionFiles((files) => ({ ...files, [job.id]: event.target.files?.[0] || null }))}
+                    style={{ maxWidth: "220px", fontSize: "12px" }}
+                  />
+                  <button onClick={() => uploadDescriptionFile(job.id)} style={{ padding: "6px 10px", background: "white", border: "1px solid var(--border)", borderRadius: "7px", fontSize: "12px", fontWeight: 600, cursor: "pointer" }}>
+                    Import JD
+                  </button>
+                </div>
               </div>
 
               {/* Actions */}

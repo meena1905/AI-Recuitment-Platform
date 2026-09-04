@@ -15,3 +15,4 @@ redis
 prometheus-fastapi-instrumentator
 google-auth-oauthlib
 google-api-python-client
+python-docx

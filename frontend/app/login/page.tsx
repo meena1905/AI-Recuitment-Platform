@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-
 import { API_URL } from "@/lib/api";
+
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -10,18 +10,28 @@ export default function LoginPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const response = await fetch(`${API_URL}/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
-    const data = await response.json();
-    if (response.ok) {
-      localStorage.setItem("access_token", data.access_token);
-      setMessage("Logged in successfully!");
-      window.location.href = "/jobs";
-    } else {
-      setMessage(data.detail || "Login failed.");
+    try {
+      const response = await fetch(`${API_URL}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await response.json();
+      if (response.ok) {
+        localStorage.setItem("access_token", data.access_token);
+        setMessage("Logged in successfully!");
+
+        const payload = JSON.parse(atob(data.access_token.split(".")[1]));
+        if (payload.role === "hr") {
+          window.location.href = "/hr-jobs";
+        } else {
+          window.location.href = "/jobs";
+        }
+      } else {
+        setMessage(data.detail || "Login failed.");
+      }
+    } catch {
+      setMessage("Unable to connect to the server. Please try again.");
     }
   }
 

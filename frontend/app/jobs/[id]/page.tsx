@@ -30,7 +30,7 @@ export default function JobDetailPage() {
       return;
     }
     if (!file) {
-      setMessage("Please attach your resume (PDF).");
+      setMessage("Please attach your resume (PDF or DOCX).");
       return;
     }
 
@@ -83,12 +83,12 @@ export default function JobDetailPage() {
           <p style={{ fontSize: "13px", fontWeight: 600, color: "var(--ink-soft)", textTransform: "uppercase", letterSpacing: "0.04em", margin: "0 0 8px" }}>
             About the role
           </p>
-          <p style={{ fontSize: "15px", lineHeight: 1.6, margin: "0 0 20px" }}>{job.description}</p>
+          <p style={{ fontSize: "15px", lineHeight: 1.7, margin: "0 0 20px", whiteSpace: "pre-line" }}>{job.description}</p>
 
           <p style={{ fontSize: "13px", fontWeight: 600, color: "var(--ink-soft)", textTransform: "uppercase", letterSpacing: "0.04em", margin: "0 0 8px" }}>
             What we're looking for
           </p>
-          <p style={{ fontSize: "15px", lineHeight: 1.6, margin: 0 }}>{job.requirements}</p>
+          <p style={{ fontSize: "15px", lineHeight: 1.7, margin: 0, whiteSpace: "pre-line" }}>{job.requirements}</p>
         </div>
 
         <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "10px", padding: "28px" }}>
@@ -96,7 +96,7 @@ export default function JobDetailPage() {
           <form onSubmit={handleApply} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
             <input
               type="file"
-              accept=".pdf"
+              accept=".pdf,.docx"
               onChange={(e) => setFile(e.target.files?.[0] || null)}
               style={{ fontSize: "14px" }}
             />
