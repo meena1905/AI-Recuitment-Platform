@@ -38,7 +38,7 @@ export default function JobDetailPage() {
     const formData = new FormData();
     formData.append("resume", file);
 
-    const response = await fetch(`http://localhost:8000/jobs/${params.id}/apply`, {
+    const response = await fetch(`${API_URL}/jobs/${params.id}/apply`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
       body: formData,

@@ -5,21 +5,20 @@ import Link from "next/link";
 import { API_URL } from "@/lib/api";
 
 export default function Home() {
-  const [user, setUser] = useState<{ name: string; email: string; role: string } | null>(() => {
-    if (typeof window === "undefined") return null;
-    const token = localStorage.getItem("access_token");
-    if (!token) return null;
-    try {
-      const payload = JSON.parse(atob(token.split(".")[1]));
-      return payload.role ? { name: "", email: "", role: payload.role } : null;
-    } catch {
-      return null;
-    }
-  });
+  const [user, setUser] = useState<{ name: string; email: string; role: string } | null>(null);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     const token = localStorage.getItem("access_token");
     if (!token) return;
+    try {
+      const payload = JSON.parse(atob(token.split(".")[1]));
+      if (payload?.role) {
+        setUser({ name: "", email: "", role: payload.role });
+      }
+    } catch {}
+
     fetch(`${API_URL}/me`, { headers: { Authorization: `Bearer ${token}` } })
       .then((response) => response.ok ? response.json() : null)
       .then((profile) => {
@@ -64,7 +63,7 @@ export default function Home() {
         </p>
 
         <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
-          {user ? (
+          {mounted && user ? (
             <>
               <div style={{ display: "flex", alignItems: "center", gap: "10px", padding: "6px 10px", border: "1px solid var(--border)", borderRadius: "10px", background: "var(--bg)" }}>
                 <div style={{ width: "30px", height: "30px", borderRadius: "50%", display: "grid", placeItems: "center", background: "var(--accent)", color: "white", fontSize: "12px", fontWeight: 700 }}>

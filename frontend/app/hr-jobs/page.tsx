@@ -2,6 +2,7 @@
 import { API_URL } from "@/lib/api";
 import { useState, useEffect } from "react";
 import UserCard from "@/app/UserCard";
+import Link from "next/link";
 
 export default function HRJobsPage() {
   const [jobs, setJobs] = useState<any[]>([]);
@@ -14,18 +15,32 @@ export default function HRJobsPage() {
 
   function loadJobs() {
     const token = localStorage.getItem("access_token");
+    if (!token) {
+      setMessage("Please sign in as HR to view your job postings.");
+      setJobs([]);
+      return;
+    }
 
     fetch(`${API_URL}/jobs/mine`, {
       headers: {
         Authorization: `Bearer ${token}`,
       },
     })
-      .then((res) => res.json())
+      .then(async (res) => {
+        if (!res.ok) {
+          if (res.status === 401) {
+            throw new Error("Your session has expired. Please sign in again.");
+          }
+          throw new Error("Failed to load jobs.");
+        }
+        return res.json();
+      })
       .then((data) => {
         setJobs(Array.isArray(data) ? data : []);
       })
       .catch((error) => {
         console.error("Failed to load jobs:", error);
+        setMessage(error.message || "Unable to connect to the server.");
         setJobs([]);
       });
   }
@@ -38,58 +53,74 @@ export default function HRJobsPage() {
     e.preventDefault();
 
     const token = localStorage.getItem("access_token");
-
-    const response = await fetch("http://localhost:8000/jobs", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        title,
-        description,
-        requirements,
-      }),
-    });
-
-    if (response.ok) {
-      setMessage("Job created as draft.");
-      setTitle("");
-      setDescription("");
-      setRequirements("");
-      setShowForm(false);
-      loadJobs();
-    } else {
-      const data = await response.json();
-      setMessage(data.detail || "Failed to create job.");
+    if (!token) {
+      setMessage("Please sign in as HR to create a job.");
+      return;
     }
-  }
 
-  async function togglePublish(job: any) {
-    const token = localStorage.getItem("access_token");
-
-    const newStatus =
-      job.status === "published" ? "draft" : "published";
-
-    const response = await fetch(
-      `http://localhost:8000/jobs/${job.id}`,
-      {
-        method: "PUT",
+    try {
+      const response = await fetch(`${API_URL}/jobs`, {
+        method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          status: newStatus,
+          title,
+          description,
+          requirements,
         }),
-      }
-    );
+      });
 
-    if (response.ok) {
-      loadJobs();
-    } else {
-      const data = await response.json();
-      setMessage(data.detail || "Failed to update job.");
+      if (response.ok) {
+        setMessage("Job created as draft.");
+        setTitle("");
+        setDescription("");
+        setRequirements("");
+        setShowForm(false);
+        loadJobs();
+      } else {
+        const data = await response.json().catch(() => ({}));
+        setMessage(data.detail || "Failed to create job.");
+      }
+    } catch {
+      setMessage("Unable to connect to the server to create job.");
+    }
+  }
+
+  async function togglePublish(job: any) {
+    const token = localStorage.getItem("access_token");
+    if (!token) {
+      setMessage("Please sign in as HR to update job status.");
+      return;
+    }
+
+    const newStatus =
+      job.status === "published" ? "draft" : "published";
+
+    try {
+      const response = await fetch(
+        `${API_URL}/jobs/${job.id}`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            status: newStatus,
+          }),
+        }
+      );
+
+      if (response.ok) {
+        loadJobs();
+      } else {
+        const data = await response.json().catch(() => ({}));
+        setMessage(data.detail || "Failed to update job.");
+      }
+    } catch {
+      setMessage("Unable to connect to the server to update job status.");
     }
   }
 
@@ -165,7 +196,7 @@ export default function HRJobsPage() {
             gap: "2px",
           }}
         >
-          <a
+          <Link
             href="/hr-jobs"
             style={{
               padding: "9px 12px",
@@ -178,7 +209,20 @@ export default function HRJobsPage() {
             }}
           >
             My Jobs
-          </a>
+          </Link>
+          <Link
+            href="/hr-jobs/analytics"
+            style={{
+              padding: "9px 12px",
+              borderRadius: "8px",
+              color: "var(--ink-soft)",
+              fontSize: "14px",
+              fontWeight: 500,
+              textDecoration: "none",
+            }}
+          >
+            Analytics
+          </Link>
         </nav>
       </aside>
 

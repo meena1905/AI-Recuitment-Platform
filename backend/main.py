@@ -18,15 +18,16 @@ except Exception:
 import uuid
 import csv
 import io
-from ai_scorer import score_resume_against_job
+from ai_scorer import generate_rejection_feedback, score_resume_against_job
 from pydantic import BaseModel
 from database import Base, SessionLocal, engine
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, BackgroundTasks
 from models import User
-from notifications import send_status_email, send_interview_email, send_interview_slots_email
+from notifications import send_status_email, send_interview_email, send_interview_slots_email, send_hr_interview_email
 from resume_parser import extract_text_from_file
 from auth import hash_password, verify_password, create_access_token, decode_access_token
-from models import User, Company, Job, Application,Interview
+from models import User, Company, Job, Application, Interview
+from rag_assistant import ask_candidate_rag, compare_candidates_rag
 import redis
 import json as json_lib
 from calendar_integration import create_interview_event
@@ -56,6 +57,7 @@ with engine.begin() as connection:
         "skills_score": "FLOAT",
         "experience_score": "FLOAT",
         "education_score": "FLOAT",
+        "resume_text": "TEXT",
     }.items():
         if column_name not in application_columns:
             connection.execute(text(f"ALTER TABLE applications ADD COLUMN {column_name} {column_type}"))
@@ -66,10 +68,13 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
+        "http://localhost:3001",
         "http://localhost:3002",
         "http://127.0.0.1:3000",
+        "http://127.0.0.1:3001",
         "http://127.0.0.1:3002",
     ],
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+)(:\d+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -124,6 +129,14 @@ class InterviewSlots(BaseModel):
     scheduled_at: list[str]
 class FeedbackUpdate(BaseModel):
     feedback: str
+class ChatHistoryItem(BaseModel):
+    role: str
+    content: str
+class CandidateChatPayload(BaseModel):
+    question: str
+    history: list[ChatHistoryItem] = []
+class CandidateComparePayload(BaseModel):
+    application_ids: list[int]
 @app.get("/")
 def read_root():
     return {"message": "Backend is alive"}
@@ -271,17 +284,27 @@ def run_scoring_task(application_id: int):
 
         application.match_score = result["match_score"]
         application.ai_explanation = result["explanation"]
-        candidate = result.get("candidate", {})
-        application.candidate_name = candidate.get("name") or None
-        application.candidate_email = candidate.get("email") or None
-        application.phone = candidate.get("phone") or None
-        application.skills = json_lib.dumps(candidate.get("skills", []))
-        application.experience = candidate.get("experience") or None
-        application.education = candidate.get("education") or None
+        candidate_data = result.get("candidate", {})
+        application.candidate_name = candidate_data.get("name") or None
+        application.candidate_email = candidate_data.get("email") or None
+        application.phone = candidate_data.get("phone") or None
+        application.skills = json_lib.dumps(candidate_data.get("skills", []))
+        application.experience = candidate_data.get("experience") or None
+        application.education = candidate_data.get("education") or None
         breakdown = result.get("score_breakdown", {})
         application.skills_score = breakdown.get("skills")
         application.experience_score = breakdown.get("experience")
         application.education_score = breakdown.get("education")
+        application.resume_text = resume_text
+
+        user = db.query(User).filter(User.id == application.candidate_id).first()
+        if user and user.email.startswith("imported-"):
+            if application.candidate_name:
+                user.name = application.candidate_name
+            if application.candidate_email:
+                existing_user = db.query(User).filter(User.email == application.candidate_email).first()
+                if not existing_user:
+                    user.email = application.candidate_email
         db.commit()
     except Exception as e:
         print(f"Scoring failed for application {application_id}: {e}")
@@ -558,14 +581,24 @@ def create_missing_interview_link(
     if interview.calendar_link:
         return interview
     candidate = db.query(User).filter(User.id == application.candidate_id).first()
+    candidate_email = application.candidate_email or (candidate.email if candidate else None)
+    candidate_name = application.candidate_name or (candidate.name if candidate else "Candidate")
     try:
-        interview.calendar_link = create_interview_event(candidate.email, job.title, interview.scheduled_at)
+        interview.calendar_link = create_interview_event(candidate_email, job.title, interview.scheduled_at)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Google Calendar event creation failed: {e}") from e
     db.commit()
     db.refresh(interview)
-    send_interview_email(candidate.email, candidate.name, job.title, interview.scheduled_at, interview.calendar_link)
-    send_interview_email(current_user.email, current_user.name, job.title, interview.scheduled_at, interview.calendar_link)
+    send_interview_email(candidate_email, candidate_name, job.title, interview.scheduled_at, interview.calendar_link)
+    send_hr_interview_email(
+        current_user.email,
+        current_user.name,
+        candidate_name,
+        candidate_email,
+        job.title,
+        interview.scheduled_at,
+        interview.calendar_link,
+    )
     return interview
 VALID_STATUS_TRANSITIONS = {
     "applied": ["shortlisted", "rejected"],
@@ -595,7 +628,23 @@ def update_application_status(
     db.commit()
     db.refresh(application)
     candidate = db.query(User).filter(User.id == application.candidate_id).first()
-    send_status_email(candidate.email, candidate.name, job.title, payload.status)
+    candidate_email = application.candidate_email or (candidate.email if candidate else None)
+    candidate_name = application.candidate_name or (candidate.name if candidate else "Candidate")
+    rejection_feedback = None
+    if payload.status == "rejected":
+        rejection_feedback = generate_rejection_feedback(
+            resume_text=application.resume_text or "",
+            job_title=job.title,
+            job_requirements=job.requirements or job.description or "",
+            candidate_skills=application.skills,
+        )
+    send_status_email(
+        candidate_email,
+        candidate_name,
+        job.title,
+        payload.status,
+        rejection_feedback=rejection_feedback,
+    )
     return application
 @app.post("/applications/{application_id}/interview")
 def schedule_interview(
@@ -613,8 +662,10 @@ def schedule_interview(
     if application.status != "shortlisted":
         raise HTTPException(status_code=400, detail="Can only schedule interviews for shortlisted candidates")
     candidate = db.query(User).filter(User.id == application.candidate_id).first()
+    candidate_email = application.candidate_email or (candidate.email if candidate else None)
+    candidate_name = application.candidate_name or (candidate.name if candidate else "Candidate")
     try:
-        calendar_link = create_interview_event(candidate.email, job.title, payload.scheduled_at)
+        calendar_link = create_interview_event(candidate_email, job.title, payload.scheduled_at)
         print(f"Calendar event created: {calendar_link}")
     except Exception as e:
         print(f"Calendar event creation failed: {e}")
@@ -631,15 +682,17 @@ def schedule_interview(
     db.commit()
     db.refresh(new_interview)
     send_interview_email(
-        candidate.email,
-        candidate.name,
+        candidate_email,
+        candidate_name,
         job.title,
         payload.scheduled_at,
         calendar_link,
     )
-    send_interview_email(
+    send_hr_interview_email(
         current_user.email,
         current_user.name,
+        candidate_name,
+        candidate_email,
         job.title,
         payload.scheduled_at,
         calendar_link,
@@ -673,7 +726,9 @@ def propose_interview_slots(
     db.add_all(slots)
     db.commit()
     candidate = db.query(User).filter(User.id == application.candidate_id).first()
-    send_interview_slots_email(candidate.email, candidate.name, job.title, slot_times)
+    candidate_email = application.candidate_email or (candidate.email if candidate else None)
+    candidate_name = application.candidate_name or (candidate.name if candidate else "Candidate")
+    send_interview_slots_email(candidate_email, candidate_name, job.title, slot_times)
     return slots
 
 @app.post("/interview-slots/{slot_id}/select")
@@ -709,9 +764,11 @@ def select_interview_slot(
         User.role == "hr",
     ).first()
     if hr_email:
-        send_interview_email(
+        send_hr_interview_email(
             hr_email.email,
             hr_email.name,
+            current_user.name,
+            current_user.email,
             job.title,
             selected_slot.scheduled_at,
             calendar_link,
@@ -779,3 +836,172 @@ def get_analytics_summary(current_user: User = Depends(require_role(["hr"])), db
         "rejected_count": rejected_count or 0,
         "average_match_score": round(avg_score, 1) if avg_score is not None else None,
     }
+
+
+@app.get("/analytics/dashboard")
+def get_analytics_dashboard(
+    job_id: int | None = None,
+    current_user: User = Depends(require_role(["hr"])),
+    db: Session = Depends(get_db),
+):
+    jobs = db.query(Job).filter(Job.company_id == current_user.company_id).order_by(Job.created_at.desc()).all()
+    if job_id is not None and not any(job.id == job_id for job in jobs):
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    applications_query = (
+        db.query(Application)
+        .join(Job, Application.job_id == Job.id)
+        .filter(Job.company_id == current_user.company_id)
+    )
+    if job_id is not None:
+        applications_query = applications_query.filter(Application.job_id == job_id)
+    applications = applications_query.all()
+
+    statuses = [application.status for application in applications]
+    applied = len(applications)
+    shortlisted = sum(status in {"shortlisted", "interview_scheduled", "hired"} for status in statuses)
+    interviewed = sum(status in {"interview_scheduled", "hired"} for status in statuses)
+    hired = sum(status == "hired" for status in statuses)
+
+    scores = [application.match_score for application in applications if application.match_score is not None]
+    score_distribution = {
+        "high": sum(score >= 80 for score in scores),
+        "medium": sum(60 <= score < 80 for score in scores),
+        "low": sum(score < 60 for score in scores),
+        "unscored": applied - len(scores),
+    }
+
+    skill_counts = {}
+    for application in applications:
+        try:
+            skills = json_lib.loads(application.skills or "[]")
+        except (json_lib.JSONDecodeError, TypeError):
+            skills = []
+        if not isinstance(skills, list):
+            continue
+        for skill in skills:
+            if not isinstance(skill, str) or not skill.strip():
+                continue
+            normalized = skill.strip().lower()
+            skill_counts[normalized] = skill_counts.get(normalized, {"name": skill.strip(), "count": 0})
+            skill_counts[normalized]["count"] += 1
+
+    top_skills = sorted(skill_counts.values(), key=lambda item: item["count"], reverse=True)[:10]
+    average_score = round(sum(scores) / len(scores), 1) if scores else None
+
+    return {
+        "jobs": [{"id": job.id, "title": job.title} for job in jobs],
+        "total_applications": applied,
+        "average_match_score": average_score,
+        "funnel": [
+            {"label": "Applied", "count": applied, "conversion": 100 if applied else 0},
+            {"label": "Shortlisted", "count": shortlisted, "conversion": round(shortlisted / applied * 100, 1) if applied else 0},
+            {"label": "Interview scheduled", "count": interviewed, "conversion": round(interviewed / applied * 100, 1) if applied else 0},
+            {"label": "Hired", "count": hired, "conversion": round(hired / applied * 100, 1) if applied else 0},
+        ],
+        "score_distribution": score_distribution,
+        "top_skills": top_skills,
+    }
+
+@app.post("/applications/{application_id}/chat")
+def chat_with_candidate_resume(
+    application_id: int,
+    payload: CandidateChatPayload,
+    current_user: User = Depends(require_role(["hr"])),
+    db: Session = Depends(get_db),
+):
+    application = db.query(Application).filter(Application.id == application_id).first()
+    if not application:
+        raise HTTPException(status_code=404, detail="Application not found")
+    job = db.query(Job).filter(Job.id == application.job_id).first()
+    if job.company_id != current_user.company_id:
+        raise HTTPException(status_code=403, detail="You do not have access to this application")
+
+    resume_text = application.resume_text
+    if not resume_text and application.resume_url and os.path.exists(application.resume_url):
+        try:
+            resume_text = extract_text_from_file(application.resume_url)
+            application.resume_text = resume_text
+            db.commit()
+        except Exception:
+            resume_text = ""
+
+    candidate = db.query(User).filter(User.id == application.candidate_id).first()
+    candidate_name = application.candidate_name or (candidate.name if candidate else f"Candidate #{application.id}")
+
+    candidate_meta = {
+        "match_score": application.match_score,
+        "skills": application.skills,
+        "experience": application.experience,
+        "education": application.education,
+    }
+
+    result = ask_candidate_rag(
+        resume_text=resume_text or "Resume text could not be extracted.",
+        candidate_name=candidate_name,
+        candidate_meta=candidate_meta,
+        job_title=job.title,
+        job_description=job.description or "",
+        job_requirements=job.requirements or "",
+        question=payload.question,
+        history=[item.dict() for item in payload.history],
+    )
+    return result
+
+@app.post("/jobs/{job_id}/compare-candidates")
+def compare_candidates_endpoint(
+    job_id: int,
+    payload: CandidateComparePayload,
+    current_user: User = Depends(require_role(["hr"])),
+    db: Session = Depends(get_db),
+):
+    job = db.query(Job).filter(Job.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.company_id != current_user.company_id:
+        raise HTTPException(status_code=403, detail="You do not have access to this job")
+
+    if len(payload.application_ids) != 2:
+        raise HTTPException(status_code=400, detail="Please select exactly 2 candidates to compare")
+
+    apps = (
+        db.query(Application)
+        .filter(Application.id.in_(payload.application_ids), Application.job_id == job_id)
+        .all()
+    )
+    if len(apps) != 2:
+        raise HTTPException(status_code=404, detail="Could not find both selected applications for this job")
+
+    app_a, app_b = apps[0], apps[1]
+
+    def build_candidate_dict(app: Application):
+        user = db.query(User).filter(User.id == app.candidate_id).first()
+        res_text = app.resume_text
+        if not res_text and app.resume_url and os.path.exists(app.resume_url):
+            try:
+                res_text = extract_text_from_file(app.resume_url)
+                app.resume_text = res_text
+            except Exception:
+                res_text = ""
+        return {
+            "id": app.id,
+            "name": app.candidate_name or (user.name if user else f"Candidate #{app.id}"),
+            "match_score": app.match_score,
+            "skills": app.skills,
+            "experience": app.experience,
+            "education": app.education,
+            "resume_text": res_text or "",
+        }
+
+    c_a = build_candidate_dict(app_a)
+    c_b = build_candidate_dict(app_b)
+    db.commit()
+
+    comparison = compare_candidates_rag(
+        job_title=job.title,
+        job_description=job.description or "",
+        job_requirements=job.requirements or "",
+        candidate_a=c_a,
+        candidate_b=c_b,
+    )
+    return comparison
