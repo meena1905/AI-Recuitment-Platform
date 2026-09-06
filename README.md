@@ -83,3 +83,7 @@ BACKEND_URL=<your backend URL>   # overrides the /api rewrite target
 | GET    | `/analytics/dashboard`            | Hiring analytics (HR)                |
 
 Interactive docs: `https://<backend>/docs`
+
+## License
+
+MIT License-Developed by Meenakshi S
