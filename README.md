@@ -1,6 +1,6 @@
 # AI Recruitment Platform
 
-[Live demo](ai-recuitment-platform-1.vercel.app/)
+[Live Demo](https://ai-recuitment-platform-1.vercel.app/)
 
 
 AI-powered recruitment platform with automated resume scoring, ranking, and multi-slot interview scheduling. Candidates get instant AI match scores with explanations; HR reviews ranked applicants and sends interviews with auto-generated meeting links and calendar invites.
