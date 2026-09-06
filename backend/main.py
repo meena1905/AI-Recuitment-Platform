@@ -30,7 +30,7 @@ from models import User, Company, Job, Application, Interview
 from rag_assistant import ask_candidate_rag, compare_candidates_rag
 import redis
 import json as json_lib
-from calendar_integration import create_interview_event
+from calendar_integration import create_interview_event, fallback_meet_link
 from prometheus_fastapi_instrumentator import Instrumentator
 
 try:
@@ -44,6 +44,7 @@ app = FastAPI()
 Instrumentator().instrument(app).expose(app)
 
 with engine.begin() as connection:
+    Base.metadata.create_all(bind=engine)
     if "calendar_link" not in {column["name"] for column in inspect(engine).get_columns("interviews")}:
         connection.execute(text("ALTER TABLE interviews ADD COLUMN calendar_link VARCHAR"))
     application_columns = {column["name"] for column in inspect(engine).get_columns("applications")}
@@ -61,7 +62,6 @@ with engine.begin() as connection:
     }.items():
         if column_name not in application_columns:
             connection.execute(text(f"ALTER TABLE applications ADD COLUMN {column_name} {column_type}"))
-    Base.metadata.create_all(bind=engine)
 
 from fastapi.middleware.cors import CORSMiddleware
 app.add_middleware(
@@ -723,14 +723,28 @@ def propose_interview_slots(
         Interview.application_id == application_id,
         Interview.status == "proposed",
     ).update({"status": "cancelled"})
-    slots = [Interview(application_id=application_id, scheduled_at=slot, status="proposed") for slot in slot_times]
-    db.add_all(slots)
+    slots = []
+    for slot in slot_times:
+        new_slot = Interview(
+            application_id=application_id,
+            scheduled_at=slot,
+            status="proposed",
+            calendar_link=fallback_meet_link(job.title),
+        )
+        db.add(new_slot)
+        slots.append(new_slot)
     db.commit()
+    for slot in slots:
+        db.refresh(slot)
     candidate = db.query(User).filter(User.id == application.candidate_id).first()
     candidate_email = application.candidate_email or (candidate.email if candidate else None)
     candidate_name = application.candidate_name or (candidate.name if candidate else "Candidate")
-    send_interview_slots_email(candidate_email, candidate_name, job.title, slot_times)
-    return slots
+    slot_data = [
+        {"id": slot.id, "scheduled_at": slot.scheduled_at.isoformat(), "status": slot.status, "calendar_link": slot.calendar_link}
+        for slot in slots
+    ]
+    send_interview_slots_email(candidate_email, candidate_name, job.title, slot_data)
+    return slot_data
 
 @app.post("/interview-slots/{slot_id}/select")
 def select_interview_slot(
@@ -745,10 +759,7 @@ def select_interview_slot(
     if application.candidate_id != current_user.id:
         raise HTTPException(status_code=403, detail="You do not have access to this interview slot")
     job = db.query(Job).filter(Job.id == application.job_id).first()
-    try:
-        calendar_link = create_interview_event(current_user.email, job.title, selected_slot.scheduled_at)
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Google Calendar event creation failed: {e}") from e
+    calendar_link = selected_slot.calendar_link or fallback_meet_link(job.title)
     selected_slot.status = "scheduled"
     selected_slot.calendar_link = calendar_link
     db.query(Interview).filter(

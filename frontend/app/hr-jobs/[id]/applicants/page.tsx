@@ -177,6 +177,19 @@ export default function ApplicantsPage() {
     }
   }
 
+  function addSlot() {
+    if (scheduledSlots.length >= 5) return;
+    setScheduledSlots([...scheduledSlots, ""]);
+  }
+
+  function updateSlot(index: number, value: string) {
+    setScheduledSlots((prev) => prev.map((slot, i) => (i === index ? value : slot)));
+  }
+
+  function removeSlot(index: number) {
+    setScheduledSlots((prev) => (prev.length === 1 ? [""] : prev.filter((_, i) => i !== index)));
+  }
+
   async function viewResume(applicationId: number) {
     const token = localStorage.getItem("access_token");
     const response = await fetch(`${API_URL}/applications/${applicationId}/resume`, {
@@ -607,25 +620,60 @@ export default function ApplicantsPage() {
 
                   {/* Status Progression Controls */}
                   {schedulingId === app.id ? (
-                    <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-                      <input
-                        type="datetime-local"
-                        value={scheduledSlots[0]}
-                        onChange={(e) => setScheduledSlots([e.target.value, ...scheduledSlots.slice(1)])}
-                        style={{ padding: "6px 8px", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "12px" }}
-                      />
-                      <button
-                        onClick={() => submitInterviewSlots(app.id)}
-                        style={{ padding: "6px 12px", background: "var(--accent)", color: "white", border: "none", borderRadius: "6px", fontSize: "12px", fontWeight: 600, cursor: "pointer" }}
-                      >
-                        Send Slots
-                      </button>
-                      <button
-                        onClick={() => { setSchedulingId(null); setScheduledSlots([""]); }}
-                        style={{ padding: "6px 10px", background: "white", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "12px", cursor: "pointer" }}
-                      >
-                        Cancel
-                      </button>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "8px", alignItems: "flex-end" }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                        {scheduledSlots.map((slot, index) => (
+                          <div key={index} style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                            <input
+                              type="datetime-local"
+                              value={slot}
+                              onChange={(e) => updateSlot(index, e.target.value)}
+                              style={{ padding: "6px 8px", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "12px" }}
+                            />
+                            {scheduledSlots.length > 1 && (
+                              <button
+                                onClick={() => removeSlot(index)}
+                                title="Remove slot"
+                                style={{ padding: "4px 9px", background: "white", border: "1px solid var(--danger)", borderRadius: "6px", color: "var(--danger)", fontSize: "12px", cursor: "pointer" }}
+                              >
+                                &times;
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                        <button
+                          onClick={addSlot}
+                          disabled={scheduledSlots.length >= 5}
+                          style={{
+                            alignSelf: "flex-start",
+                            padding: "5px 10px",
+                            background: "white",
+                            border: "1px dashed var(--accent)",
+                            borderRadius: "6px",
+                            color: "var(--accent)",
+                            fontSize: "12px",
+                            fontWeight: 600,
+                            cursor: scheduledSlots.length >= 5 ? "not-allowed" : "pointer",
+                            opacity: scheduledSlots.length >= 5 ? 0.5 : 1,
+                          }}
+                        >
+                          + Add another slot ({scheduledSlots.length}/5)
+                        </button>
+                      </div>
+                      <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                        <button
+                          onClick={() => submitInterviewSlots(app.id)}
+                          style={{ padding: "6px 12px", background: "var(--accent)", color: "white", border: "none", borderRadius: "6px", fontSize: "12px", fontWeight: 600, cursor: "pointer" }}
+                        >
+                          Send Slots
+                        </button>
+                        <button
+                          onClick={() => { setSchedulingId(null); setScheduledSlots([""]); }}
+                          style={{ padding: "6px 10px", background: "white", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "12px", cursor: "pointer" }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     <div style={{ display: "flex", gap: "6px" }}>
