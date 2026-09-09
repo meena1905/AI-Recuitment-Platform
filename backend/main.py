@@ -609,6 +609,9 @@ def score_application(application_id: int, current_user: User = Depends(require_
         db.commit()
         db.refresh(application)
         return application
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception as exc:
         print(f"Rescore failed for application {application_id}: {exc}")
         db.rollback()
