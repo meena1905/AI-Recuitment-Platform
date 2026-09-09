@@ -548,26 +548,31 @@ def score_application(application_id: int, current_user: User = Depends(require_
     job = db.query(Job).filter(Job.id == application.job_id).first()
     if job.company_id != current_user.company_id:
         raise HTTPException(status_code=403, detail="You do not have access to this application")
-    resume_text = (application.resume_text or "").strip() or extract_text_from_file(application.resume_url)
-    result = score_resume_against_job(resume_text, job.description, job.requirements)
-    application.match_score = result["match_score"]
-    application.ai_explanation = result["explanation"]
-    candidate = result.get("candidate", {})
-    application.candidate_name = candidate.get("name") or None
-    application.candidate_email = candidate.get("email") or None
-    application.phone = candidate.get("phone") or None
-    application.skills = json_lib.dumps(candidate.get("skills", []))
-    application.experience = candidate.get("experience") or None
-    application.education = candidate.get("education") or None
-    breakdown = result.get("score_breakdown", {})
-    application.skills_score = breakdown.get("skills")
-    application.experience_score = breakdown.get("experience")
-    application.education_score = breakdown.get("education")
-    application.matched_skills = json_lib.dumps(result.get("matched_skills", []))
-    application.missing_skills = json_lib.dumps(result.get("missing_skills", []))
-    db.commit()
-    db.refresh(application)
-    return application
+    try:
+        resume_text = (application.resume_text or "").strip() or extract_text_from_file(application.resume_url)
+        result = score_resume_against_job(resume_text, job.description, job.requirements)
+        application.match_score = result["match_score"]
+        application.ai_explanation = result["explanation"]
+        candidate = result.get("candidate", {})
+        application.candidate_name = candidate.get("name") or None
+        application.candidate_email = candidate.get("email") or None
+        application.phone = candidate.get("phone") or None
+        application.skills = json_lib.dumps(candidate.get("skills", []))
+        application.experience = candidate.get("experience") or None
+        application.education = candidate.get("education") or None
+        breakdown = result.get("score_breakdown", {})
+        application.skills_score = breakdown.get("skills")
+        application.experience_score = breakdown.get("experience")
+        application.education_score = breakdown.get("education")
+        application.matched_skills = json_lib.dumps(result.get("matched_skills", []))
+        application.missing_skills = json_lib.dumps(result.get("missing_skills", []))
+        db.commit()
+        db.refresh(application)
+        return application
+    except Exception as exc:
+        print(f"Rescore failed for application {application_id}: {exc}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Rescore failed: {exc}")
 @app.post("/applications/{application_id}/interview-link")
 def create_missing_interview_link(
     application_id: int,
