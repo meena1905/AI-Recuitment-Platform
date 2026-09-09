@@ -205,16 +205,20 @@ export default function ApplicantsPage() {
   }
 
   async function rescoreApplication(applicationId: number) {
-    const response = await fetch(`${API_URL}/applications/${applicationId}/score`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${localStorage.getItem("access_token")}` },
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      alert(data.detail || "Unable to rescore application.");
-      return;
+    try {
+      const response = await fetch(`${API_URL}/applications/${applicationId}/score`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${localStorage.getItem("access_token")}` },
+      });
+      if (!response.ok) {
+        const body = await response.text().catch(() => "");
+        alert(`Rescore failed (HTTP ${response.status}). ${body.slice(0, 250)}`);
+        return;
+      }
+      loadApplicants();
+    } catch (err) {
+      alert(`Rescore failed: ${err instanceof Error ? err.message : String(err)}`);
     }
-    loadApplicants();
   }
 
   // Open RAG Assistant
