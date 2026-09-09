@@ -1,0 +1,20 @@
+name: Keep Backend Awake
+
+on:
+  schedule:
+    # Every 10 minutes keeps Render free tier (15 min idle timeout) from sleeping
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping backend root
+        run: curl -sS -o /dev/null -w "%{http_code}\n" https://ai-recuitment-platform-2.onrender.com/
+
+      - name: Ping backend jobs endpoint
+        run: curl -sS -o /dev/null -w "%{http_code}\n" https://ai-recuitment-platform-2.onrender.com/jobs/public
+
+      - name: Ping via frontend proxy
+        run: curl -sS -o /dev/null -w "%{http_code}\n" https://ai-recuitment-platform-1.vercel.app/api/jobs/public
