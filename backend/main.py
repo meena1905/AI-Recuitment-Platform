@@ -7,7 +7,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from sqlalchemy import func, inspect, text
 from fastapi import UploadFile, File
-import os
+from datetime import datetime
 import os
 
 UPLOAD_DIR = "uploads"
@@ -755,9 +755,14 @@ def schedule_interview(
         print(f"Calendar event creation failed: {e}")
         raise HTTPException(status_code=502, detail=f"Google Calendar authorization failed: {e}") from e
 
+    try:
+        scheduled_at = datetime.fromisoformat(payload.scheduled_at)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid interview time format")
+
     new_interview = Interview(
         application_id=application_id,
-        scheduled_at=payload.scheduled_at,
+        scheduled_at=scheduled_at,
         calendar_link=calendar_link,
         status="scheduled",
     )
@@ -808,9 +813,13 @@ def propose_interview_slots(
     ).update({"status": "cancelled"})
     slots = []
     for slot in slot_times:
+        try:
+            slot_dt = datetime.fromisoformat(slot)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid interview slot time format: {slot}")
         new_slot = Interview(
             application_id=application_id,
-            scheduled_at=slot,
+            scheduled_at=slot_dt,
             status="proposed",
             calendar_link=fallback_meet_link(job.title),
         )
