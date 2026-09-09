@@ -58,6 +58,8 @@ with engine.begin() as connection:
         "skills_score": "FLOAT",
         "experience_score": "FLOAT",
         "education_score": "FLOAT",
+        "matched_skills": "TEXT",
+        "missing_skills": "TEXT",
         "resume_text": "TEXT",
     }.items():
         if column_name not in application_columns:
@@ -296,6 +298,8 @@ def run_scoring_task(application_id: int):
         application.skills_score = breakdown.get("skills")
         application.experience_score = breakdown.get("experience")
         application.education_score = breakdown.get("education")
+        application.matched_skills = json_lib.dumps(result.get("matched_skills", []))
+        application.missing_skills = json_lib.dumps(result.get("missing_skills", []))
         application.resume_text = resume_text
 
         user = db.query(User).filter(User.id == application.candidate_id).first()
@@ -494,7 +498,7 @@ def export_applicants(job_id: int, current_user: User = Depends(require_role(["h
     writer.writerow([
         "Application ID", "Candidate", "Email", "Phone", "Skills", "Experience",
         "Education", "Match Score", "Skills Score", "Experience Score",
-        "Education Score", "Status", "AI Explanation",
+        "Education Score", "Matched Skills", "Missing Skills", "Status", "AI Explanation",
     ])
     for application in applications:
         writer.writerow([
@@ -502,6 +506,7 @@ def export_applicants(job_id: int, current_user: User = Depends(require_role(["h
             application.phone, application.skills, application.experience,
             application.education, application.match_score, application.skills_score,
             application.experience_score, application.education_score,
+            application.matched_skills, application.missing_skills,
             application.status, application.ai_explanation,
         ])
     return StreamingResponse(

@@ -41,6 +41,8 @@ class Application(Base):
     skills_score = Column(Float, nullable=True)
     experience_score = Column(Float, nullable=True)
     education_score = Column(Float, nullable=True)
+    matched_skills = Column(Text, nullable=True)
+    missing_skills = Column(Text, nullable=True)
     resume_text = Column(Text, nullable=True)
     applied_at = Column(DateTime, default=datetime.utcnow)
 class Interview(Base):

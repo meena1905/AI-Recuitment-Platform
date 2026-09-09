@@ -557,10 +557,39 @@ export default function ApplicantsPage() {
                 )}
 
                 {/* AI Explanation Summary */}
-                {app.ai_explanation && (
-                  <p style={{ fontSize: "13px", color: "var(--ink-soft)", margin: "0 0 14px", lineHeight: 1.5 }}>
-                    {app.ai_explanation}
-                  </p>
+                {(app.ai_explanation || app.matched_skills || app.missing_skills) && (
+                  <div style={{ background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "8px", padding: "12px 14px", marginBottom: "14px", display: "flex", flexDirection: "column", gap: "10px" }}>
+                    {(() => {
+                      const matched: string[] = (() => { try { return JSON.parse(app.matched_skills || "[]"); } catch { return []; } })();
+                      const missing: string[] = (() => { try { return JSON.parse(app.missing_skills || "[]"); } catch { return []; } })();
+                      return (
+                        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                          {matched.length > 0 && (
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center" }}>
+                              <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--success)", minWidth: "64px" }}>Strengths</span>
+                              {matched.slice(0, 12).map((skill, i) => (
+                                <span key={i} style={{ padding: "4px 9px", background: "var(--success-bg)", color: "var(--success)", borderRadius: "6px", fontSize: "12px", fontWeight: 500 }}>{skill}</span>
+                              ))}
+                            </div>
+                          )}
+                          {missing.length > 0 && (
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", alignItems: "center" }}>
+                              <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--warning)", minWidth: "64px" }}>Missing</span>
+                              {missing.slice(0, 12).map((skill, i) => (
+                                <span key={i} style={{ padding: "4px 9px", background: "var(--warning-bg)", color: "var(--warning)", borderRadius: "6px", fontSize: "12px", fontWeight: 500 }}>{skill}</span>
+                              ))}
+                            </div>
+                          )}
+                          {app.ai_explanation && (
+                            <div style={{ fontSize: "13px", color: "var(--ink-soft)", lineHeight: 1.5 }}>
+                              <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--ink)", display: "block", marginBottom: "2px" }}>Reason</span>
+                              {app.ai_explanation}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </div>
                 )}
 
                 {/* Candidate Action Buttons */}
