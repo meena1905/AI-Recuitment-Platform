@@ -540,6 +540,38 @@ def get_resume(application_id: int, current_user: User = Depends(require_role(["
         if application.resume_url.lower().endswith(".docx") else "application/pdf",
         filename=f"candidate-{application.candidate_id}{os.path.splitext(application.resume_url)[1]}"
     )
+@app.put("/applications/{application_id}/resume")
+async def replace_resume(
+    application_id: int,
+    resume: UploadFile = File(...),
+    current_user: User = Depends(require_role(["hr"])),
+    db: Session = Depends(get_db),
+):
+    application = db.query(Application).filter(Application.id == application_id).first()
+    if not application:
+        raise HTTPException(status_code=404, detail="Application not found")
+    job = db.query(Job).filter(Job.id == application.job_id).first()
+    if job.company_id != current_user.company_id:
+        raise HTTPException(status_code=403, detail="You do not have access to this application")
+    if not resume.filename.lower().endswith((".pdf", ".docx")):
+        raise HTTPException(status_code=400, detail="Only PDF and DOCX files are allowed")
+    contents = await resume.read()
+    if len(contents) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File too large (max 5MB)")
+    if application.resume_url and os.path.isfile(application.resume_url):
+        try:
+            os.remove(application.resume_url)
+        except OSError:
+            pass
+    extension = os.path.splitext(resume.filename)[1].lower()
+    file_path = os.path.join(UPLOAD_DIR, f"{uuid.uuid4()}{extension}")
+    with open(file_path, "wb") as f:
+        f.write(contents)
+    application.resume_url = file_path
+    application.resume_text = extract_text_from_file(file_path)
+    db.commit()
+    db.refresh(application)
+    return {"id": application.id, "resume_url": application.resume_url}
 @app.post("/applications/{application_id}/score")
 def score_application(application_id: int, current_user: User = Depends(require_role(["hr"])), db: Session = Depends(get_db)):
     application = db.query(Application).filter(Application.id == application_id).first()
@@ -549,7 +581,15 @@ def score_application(application_id: int, current_user: User = Depends(require_
     if job.company_id != current_user.company_id:
         raise HTTPException(status_code=403, detail="You do not have access to this application")
     try:
-        resume_text = (application.resume_text or "").strip() or extract_text_from_file(application.resume_url)
+        resume_text = (application.resume_text or "").strip()
+        if not resume_text:
+            try:
+                resume_text = extract_text_from_file(application.resume_url)
+            except Exception:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Resume file is no longer available and no stored copy exists. Please re-upload the resume for this candidate before rescoring.",
+                )
         result = score_resume_against_job(resume_text, job.description, job.requirements)
         application.match_score = result["match_score"]
         application.ai_explanation = result["explanation"]

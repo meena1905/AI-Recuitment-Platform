@@ -221,6 +221,29 @@ export default function ApplicantsPage() {
     }
   }
 
+  async function handleResumeUpload(applicationId: number, files: FileList | null) {
+    const file = files?.[0];
+    if (!file) return;
+    const formData = new FormData();
+    formData.append("resume", file);
+    try {
+      const response = await fetch(`${API_URL}/applications/${applicationId}/resume`, {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${localStorage.getItem("access_token")}` },
+        body: formData,
+      });
+      if (!response.ok) {
+        const body = await response.text().catch(() => "");
+        alert(`Upload failed (HTTP ${response.status}). ${body.slice(0, 250)}`);
+        return;
+      }
+      alert("Resume updated. You can now rescore this candidate.");
+      loadApplicants();
+    } catch (err) {
+      alert(`Upload failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   // Open RAG Assistant
   function openAssistant(app: any) {
     setActiveAssistantApp(app);
@@ -630,6 +653,27 @@ export default function ApplicantsPage() {
                     >
                       Rescore
                     </button>
+
+                    <label
+                      style={{
+                        padding: "7px 14px",
+                        color: "var(--accent)",
+                        background: "white",
+                        border: "1px solid var(--accent)",
+                        borderRadius: "7px",
+                        fontSize: "13px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Re-upload Resume
+                      <input
+                        type="file"
+                        accept=".pdf,.docx"
+                        style={{ display: "none" }}
+                        onChange={(event) => handleResumeUpload(app.id, event.target.files)}
+                      />
+                    </label>
 
                     <button
                       onClick={() => viewResume(app.id)}
