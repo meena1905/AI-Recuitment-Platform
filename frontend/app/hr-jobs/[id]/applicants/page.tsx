@@ -612,6 +612,22 @@ export default function ApplicantsPage() {
                     </button>
 
                     <button
+                      onClick={() => rescoreApplication(app.id)}
+                      style={{
+                        padding: "7px 14px",
+                        color: "var(--ink)",
+                        background: "white",
+                        border: "1px solid var(--border)",
+                        borderRadius: "7px",
+                        fontSize: "13px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Rescore
+                    </button>
+
+                    <button
                       onClick={() => viewResume(app.id)}
                       style={{
                         padding: "7px 14px",
