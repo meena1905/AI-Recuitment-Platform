@@ -61,15 +61,23 @@ Respond with ONLY valid JSON, no other text, no markdown code blocks, in exactly
   "missing_skills": [<list of skills from requirements that the candidate lacks>],
   "explanation": "<2-3 sentence explanation of the match>"
 }}"""
-    response = client.chat.completions.create(
-        model="openai/gpt-oss-120b",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.3,
-    )
+    try:
+        response = client.chat.completions.create(
+            model="openai/gpt-oss-120b",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3,
+        )
+    except Exception as exc:
+        print(f"GROQ scoring request failed: {exc}")
+        raise RuntimeError("AI scoring service is temporarily unavailable. Please try again in a few minutes.")
     raw_output = response.choices[0].message.content
     try:
         result = json.loads(raw_output)
     except json.JSONDecodeError:
         cleaned = raw_output.strip().strip("```json").strip("```").strip()
-        result = json.loads(cleaned)
+        try:
+            result = json.loads(cleaned)
+        except json.JSONDecodeError:
+            print(f"GROQ scoring returned invalid JSON: {raw_output[:500]}")
+            raise RuntimeError("AI scoring service returned an invalid response. Please try again.")
     return result

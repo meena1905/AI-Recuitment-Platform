@@ -1,6 +1,8 @@
 from fastapi import FastAPI, Depends, HTTPException, Query
+from fastapi import Request
 from fastapi.responses import FileResponse
 from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from sqlalchemy import func, inspect, text
@@ -42,6 +44,15 @@ except Exception:
     REDIS_AVAILABLE = False
 app = FastAPI()
 Instrumentator().instrument(app).expose(app)
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    print(f"Unhandled error on {request.method} {request.url.path}: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Something went wrong on our end. Please try again in a moment."},
+    )
 
 with engine.begin() as connection:
     Base.metadata.create_all(bind=engine)
@@ -167,12 +178,21 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
         company_id=company_id,
     )
     db.add(new_user)
-    db.commit()
+    try:
+        db.commit()
+    except Exception as exc:
+        print(f"Registration failed for {payload.email}: {exc}")
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Unable to create your account right now. Please try again.")
     db.refresh(new_user)
     return {"id": new_user.id, "name": new_user.name, "email": new_user.email, "role": new_user.role, "company_id": new_user.company_id}
 @app.post("/auth/login")
 def login(payload: LoginRequest, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == payload.email).first()
+    try:
+        user = db.query(User).filter(User.email == payload.email).first()
+    except Exception as exc:
+        print(f"Login lookup failed for {payload.email}: {exc}")
+        raise HTTPException(status_code=500, detail="Unable to process sign in right now. Please try again.")
     if not user or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     token = create_access_token({
@@ -340,8 +360,12 @@ async def apply_to_job(
     extension = os.path.splitext(resume.filename)[1].lower()
     unique_filename = f"{uuid.uuid4()}{extension}"
     file_path = os.path.join(UPLOAD_DIR, unique_filename)
-    with open(file_path, "wb") as f:
-        f.write(contents)
+    try:
+        with open(file_path, "wb") as f:
+            f.write(contents)
+    except Exception as exc:
+        print(f"Failed to save uploaded resume for {current_user.email}: {exc}")
+        raise HTTPException(status_code=500, detail="Unable to save the uploaded resume right now. Please try again.")
     new_application = Application(
         job_id=job_id,
         candidate_id=current_user.id,
@@ -522,8 +546,12 @@ def get_resume_text(application_id: int, current_user: User = Depends(require_ro
     job = db.query(Job).filter(Job.id == application.job_id).first()
     if job.company_id != current_user.company_id:
         raise HTTPException(status_code=403, detail="You do not have access to this application")
-    text = extract_text_from_file(application.resume_url)
-    return {"application_id": application_id, "extracted_text": text}
+    try:
+        text = extract_text_from_file(application.resume_url)
+        return {"application_id": application_id, "extracted_text": text}
+    except Exception as exc:
+        print(f"Failed to read resume for application {application_id}: {exc}")
+        raise HTTPException(status_code=400, detail="Unable to read this resume file. It may no longer be available on the server.")
 @app.get("/applications/{application_id}/resume")
 def get_resume(application_id: int, current_user: User = Depends(require_role(["hr"])), db: Session = Depends(get_db)):
     application = db.query(Application).filter(Application.id == application_id).first()
