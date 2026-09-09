@@ -563,6 +563,8 @@ def score_application(application_id: int, current_user: User = Depends(require_
     application.skills_score = breakdown.get("skills")
     application.experience_score = breakdown.get("experience")
     application.education_score = breakdown.get("education")
+    application.matched_skills = json_lib.dumps(result.get("matched_skills", []))
+    application.missing_skills = json_lib.dumps(result.get("missing_skills", []))
     db.commit()
     db.refresh(application)
     return application
