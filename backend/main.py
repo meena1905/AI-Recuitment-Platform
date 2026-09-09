@@ -276,7 +276,7 @@ def run_scoring_task(application_id: int):
             return
 
         job = db.query(Job).filter(Job.id == application.job_id).first()
-        resume_text = extract_text_from_file(application.resume_url)
+        resume_text = (application.resume_text or "").strip() or extract_text_from_file(application.resume_url)
 
         if EMBEDDINGS_AVAILABLE:
            job_text = f"{job.description} {job.requirements}"
@@ -548,7 +548,7 @@ def score_application(application_id: int, current_user: User = Depends(require_
     job = db.query(Job).filter(Job.id == application.job_id).first()
     if job.company_id != current_user.company_id:
         raise HTTPException(status_code=403, detail="You do not have access to this application")
-    resume_text = extract_text_from_file(application.resume_url)
+    resume_text = (application.resume_text or "").strip() or extract_text_from_file(application.resume_url)
     result = score_resume_against_job(resume_text, job.description, job.requirements)
     application.match_score = result["match_score"]
     application.ai_explanation = result["explanation"]
