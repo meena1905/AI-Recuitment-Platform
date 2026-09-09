@@ -1,6 +1,8 @@
 name: Keep Backend Awake
 
 on:
+  push:
+    branches: [main]
   schedule:
     # Every 10 minutes keeps Render free tier (15 min idle timeout) from sleeping
     - cron: "*/10 * * * *"
