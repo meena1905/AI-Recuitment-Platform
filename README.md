@@ -1,6 +1,5 @@
 # AI Recruitment Platform
 
-[Live Link](https://ai-recuitment-platform-1.vercel.app/)
 
 
 AI-powered recruitment platform with automated resume scoring, ranking, and multi-slot interview scheduling. Candidates get instant AI match scores with explanations; HR reviews ranked applicants and sends interviews with auto-generated meeting links and calendar invites.
@@ -18,10 +17,10 @@ Built with **FastAPI**, **Next.js**, **PostgreSQL**, **Redis**, and **GROQ LLM**
 | Layer     | Tech                                        |
 |-----------|---------------------------------------------|
 | Backend   | Python, FastAPI, SQLAlchemy                 |
-| Frontend  | Next.js, React, TypeScript, Tailwind CSS    |
+| Frontend  | Next.js   |
 | Database  | PostgreSQL                                  |
 | AI        | GROQ LLM (scoring, RAG chat, comparison)    |
-| Other     | Redis, SendGrid, Google Calendar (+Jitsi fallback), Prometheus/Grafana |
+| Other     | Redis, SendGrid, Google Calendar (Jitsi fallback), Prometheus/Grafana |
 
 ## Getting Started
 
